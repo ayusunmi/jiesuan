@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f766e">
+<title>便携收银台</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='42' fill='%230f766e'/%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='9' stroke-linecap='round'%3E%3Cpath d='M58 56v80M78 56v80M98 56v80M118 56v80M138 56v80'/%3E%3C/g%3E%3C/svg%3E">
+<!-- 使用系统字体，避免 Google Fonts 在国内被墙导致页面卡住 -->
+<!-- 商品数据（1381个商品，由Excel导入生成） -->
+<script src="./products.js"></script>
+<style>
+/* ============ 设计令牌 ============ */
+:root{
+  --bg:#f4f6f8;
+  --surface:#ffffff;
+  --ink:#0c1726;
+  --ink-2:#3b4a5f;
+  --muted:#8294a6;
+  --line:#e7edf3;
+  --primary:#0f766e;
+  --primary-d:#0b5651;
+  --primary-soft:#d3f0ec;
+  --accent:#f59e0b;
+  --accent-d:#d97706;
+  --danger:#e5484d;
+  --danger-soft:#fde8e8;
+  --ok:#16a34a;
+  --shadow:0 2px 10px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.04);
+  --shadow-lg:0 12px 32px rgba(15,23,42,.16);
+  --radius:18px;
+  --safe-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC","Helvetica Neue",sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+  font-size:15px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden;
+}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input{font-family:inherit}
+.mono{font-family:"SF Mono","JetBrains Mono","Consolas","Monaco",monospace;font-feature-settings:"tnum"}
+.display{font-family:-apple-system,"PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif}
+
+/* ============ 布局 ============ */
+.app{display:flex;flex-direction:column;height:100dvh;max-width:560px;margin:0 auto;background:var(--bg);position:relative}
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 18px;padding-top:max(14px,env(safe-area-inset-top));
+  background:linear-gradient(135deg,var(--primary) 0%,var(--primary-d) 100%);
+  color:#fff;
+}
+.topbar .brand{display:flex;align-items:center;gap:10px}
+.topbar .logo{width:30px;height:30px;border-radius:9px;background:rgba(255,255,255,.16);display:grid;place-items:center}
+.topbar .logo svg{width:18px;height:18px}
+.topbar h1{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:18px;font-weight:700;letter-spacing:.5px}
+.topbar .tag{font-size:11px;opacity:.8;font-weight:500}
+.topbar .clock{font-family:"SF Mono","Consolas","Monaco",monospace;font-size:13px;opacity:.9;font-weight:500}
+
+.main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:90px}
+.view{display:none;padding:16px}
+.view.active{display:block;animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* ============ 收银台 ============ */
+.total-banner{
+  background:var(--surface);
+  border-radius:var(--radius);
+  padding:18px 20px;
+  box-shadow:var(--shadow);
+  display:flex;justify-content:space-between;align-items:flex-end;
+  margin-bottom:14px;
+  position:relative;overflow:hidden;
+}
+.total-banner::before{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(120deg,transparent 40%,var(--primary-soft) 100%);
+  opacity:.5;
+}
+.total-banner>div{position:relative}
+.total-banner .label{font-size:12px;color:var(--muted);font-weight:500;letter-spacing:1px;text-transform:uppercase}
+.total-banner .amount{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:34px;font-weight:800;color:var(--primary);line-height:1.1;margin-top:4px}
+.total-banner .amount .cur{font-size:18px;font-weight:600;opacity:.7;margin-right:3px}
+.total-banner .count{font-size:13px;color:var(--ink-2);text-align:right}
+.total-banner .count b{font-family:"SF Mono","Consolas","Monaco",monospace;font-size:22px;color:var(--ink);font-weight:700}
+
+.scan-btn{
+  width:100%;
+  padding:18px;
+  border-radius:16px;
+  background:linear-gradient(135deg,var(--primary) 0%,var(--primary-d) 100%);
+  color:#fff;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  font-size:17px;font-weight:700;letter-spacing:1px;
+  box-shadow:0 8px 22px rgba(15,118,110,.32);
+  transition:transform .12s;
+  margin-bottom:12px;
+}
+.scan-btn:active{transform:scale(.97)}
+.scan-btn svg{width:22px;height:22px}
+
+.manual-row{display:flex;gap:8px;margin-bottom:18px}
+.manual-row input{
+  flex:1;padding:13px 16px;border:1.5px solid var(--line);border-radius:12px;
+  font-size:15px;background:var(--surface);outline:none;transition:border .15s;
+}
+.manual-row input:focus{border-color:var(--primary)}
+.manual-row button{
+  padding:0 18px;background:var(--ink);color:#fff;border-radius:12px;
+  font-weight:600;font-size:14px;white-space:nowrap;
+}
+
+.section-title{display:flex;align-items:center;justify-content:space-between;margin:6px 4px 12px}
+.section-title h2{font-size:14px;color:var(--ink-2);font-weight:600;letter-spacing:.5px}
+.section-title .clear{font-size:12px;color:var(--danger);padding:4px 8px}
+
+.cart{display:flex;flex-direction:column;gap:10px}
+.cart-item{
+  background:var(--surface);border-radius:14px;padding:14px;
+  box-shadow:var(--shadow);display:flex;gap:12px;align-items:stretch;
+  animation:slidein .25s ease;
+}
+@keyframes slidein{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.cart-item .info{flex:1;min-width:0}
+.cart-item .name{font-weight:600;font-size:15px;color:var(--ink);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cart-item .code{font-size:11px;color:var(--muted);font-family:"SF Mono","Consolas","Monaco",monospace}
+.cart-item .price-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+.price-edit{
+  border:1.5px solid var(--line);border-radius:8px;padding:5px 8px;
+  font-family:"SF Mono","Consolas","Monaco",monospace;font-size:15px;font-weight:700;color:var(--primary);
+  width:90px;text-align:right;outline:none;background:#fff;
+}
+.price-edit:focus{border-color:var(--primary)}
+.cart-item .qty{display:flex;align-items:center;gap:0;background:var(--bg);border-radius:8px;overflow:hidden}
+.cart-item .qty button{width:30px;height:30px;font-size:16px;font-weight:700;color:var(--ink-2);display:grid;place-items:center}
+.cart-item .qty button:active{background:var(--line)}
+.cart-item .qty span{min-width:28px;text-align:center;font-family:"SF Mono","Consolas","Monaco",monospace;font-weight:700;font-size:14px}
+.cart-item .right{display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between}
+.cart-item .subtotal{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-weight:700;font-size:16px;color:var(--ink)}
+.cart-item .del{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--danger);background:var(--danger-soft)}
+.cart-item .del:active{transform:scale(.9)}
+.cart-item .del svg{width:16px;height:16px}
+
+.remark-box{margin-top:16px}
+.remark-box textarea{
+  width:100%;min-height:60px;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;
+  font-size:14px;background:var(--surface);outline:none;resize:none;font-family:inherit;
+}
+.remark-box textarea:focus{border-color:var(--primary)}
+
+.empty{text-align:center;padding:50px 20px;color:var(--muted)}
+.empty svg{width:64px;height:64px;opacity:.4;margin-bottom:14px}
+.empty h3{font-size:16px;font-weight:600;color:var(--ink-2);margin-bottom:6px}
+.empty p{font-size:13px}
+
+/* ============ 结算条 ============ */
+.checkout-bar{
+  position:absolute;bottom:56px;left:0;right:0;max-width:560px;margin:0 auto;
+  background:var(--surface);border-top:1px solid var(--line);
+  padding:12px 16px;padding-bottom:max(12px,calc(var(--safe-bottom) + 0px));
+  display:flex;gap:12px;align-items:center;
+  box-shadow:0 -4px 20px rgba(15,23,42,.08);
+  z-index:20;
+}
+.checkout-bar .total{flex:1}
+.checkout-bar .total .l{font-size:11px;color:var(--muted)}
+.checkout-bar .total .v{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-weight:800;font-size:22px;color:var(--primary)}
+.checkout-bar .pay-btn{
+  padding:14px 28px;background:linear-gradient(135deg,var(--accent) 0%,var(--accent-d) 100%);
+  color:#fff;border-radius:14px;font-size:16px;font-weight:700;letter-spacing:1px;
+  box-shadow:0 6px 18px rgba(245,158,11,.4);transition:transform .12s;
+}
+.checkout-bar .pay-btn:active{transform:scale(.96)}
+.checkout-bar .pay-btn:disabled{background:var(--line);color:var(--muted);box-shadow:none}
+
+/* ============ 底部导航 ============ */
+.bottom-nav{
+  position:absolute;bottom:0;left:0;right:0;max-width:560px;margin:0 auto;
+  background:var(--surface);border-top:1px solid var(--line);
+  display:flex;padding-bottom:var(--safe-bottom);z-index:30;
+}
+.bottom-nav button{
+  flex:1;padding:8px 0 10px;display:flex;flex-direction:column;align-items:center;gap:3px;
+  color:var(--muted);font-size:11px;font-weight:500;transition:color .15s;
+}
+.bottom-nav button.active{color:var(--primary)}
+.bottom-nav button svg{width:22px;height:22px}
+.bottom-nav button.active svg{transform:translateY(-1px)}
+
+/* ============ 订单页 ============ */
+.toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.toolbar .export{flex:1;min-width:130px;padding:12px;border-radius:12px;background:var(--surface);box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;gap:7px;font-size:13px;font-weight:600;color:var(--ink-2);border:1.5px solid var(--line)}
+.toolbar .export:active{transform:scale(.97)}
+.toolbar .export svg{width:17px;height:17px}
+.toolbar .export.xsl{color:#16a34a;border-color:#bbf7d0}
+.toolbar .export.csv{color:#2563eb;border-color:#bfdbfe}
+.toolbar .export.clear{color:var(--danger);border-color:#fecaca;flex:0 0 auto;padding:12px 14px}
+
+.orders{display:flex;flex-direction:column;gap:10px}
+.order-card{background:var(--surface);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.order-head{padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.order-head .oid{font-family:"SF Mono","Consolas","Monaco",monospace;font-size:11px;color:var(--muted)}
+.order-head .time{font-size:13px;font-weight:600;color:var(--ink-2)}
+.order-head .total{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-weight:800;font-size:18px;color:var(--primary)}
+.order-body{padding:0 16px 14px;display:none;border-top:1px dashed var(--line)}
+.order-card.open .order-body{display:block;padding-top:12px}
+.order-body .item{display:flex;justify-content:space-between;font-size:13px;padding:4px 0;color:var(--ink-2)}
+.order-body .item .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px}
+.order-body .item .qt{color:var(--muted);font-family:"SF Mono","Consolas","Monaco",monospace}
+.order-body .item .pr{font-family:"SF Mono","Consolas","Monaco",monospace;font-weight:600;color:var(--ink);min-width:70px;text-align:right}
+.order-body .rm{margin-top:8px;padding:8px 10px;background:var(--bg);border-radius:8px;font-size:12px;color:var(--ink-2)}
+.order-body .rm b{color:var(--accent-d)}
+.order-toggle{width:30px;height:30px;display:grid;place-items:center;color:var(--muted);transition:transform .2s}
+.order-card.open .order-toggle{transform:rotate(180deg)}
+.order-toggle svg{width:16px;height:16px}
+
+.stats{display:flex;gap:10px;margin-bottom:14px}
+.stats .st{flex:1;background:var(--surface);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow)}
+.stats .st .l{font-size:11px;color:var(--muted);font-weight:500}
+.stats .st .v{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:22px;font-weight:800;color:var(--ink);margin-top:2px}
+.stats .st .v.acc{color:var(--primary)}
+
+/* ============ 商品页 ============ */
+.search-row{position:relative;margin-bottom:14px}
+.search-row svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--muted)}
+.search-row input{width:100%;padding:13px 16px 13px 42px;border:1.5px solid var(--line);border-radius:12px;font-size:14px;background:var(--surface);outline:none}
+.search-row input:focus{border-color:var(--primary)}
+.prod-count{font-size:12px;color:var(--muted);margin:0 4px 10px}
+.prod-count b{color:var(--ink-2);font-family:"SF Mono","Consolas","Monaco",monospace}
+.products{display:flex;flex-direction:column;gap:8px}
+.prod-card{background:var(--surface);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow);display:flex;align-items:center;gap:12px}
+.prod-card .pd{flex:1;min-width:0}
+.prod-card .pn{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prod-card .pc{font-size:11px;color:var(--muted);font-family:"SF Mono","Consolas","Monaco",monospace;margin-top:1px}
+.prod-card .pp{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-weight:700;font-size:17px;color:var(--primary)}
+.prod-card .add{width:36px;height:36px;border-radius:10px;background:var(--primary-soft);color:var(--primary);display:grid;place-items:center;flex-shrink:0}
+.prod-card .add:active{transform:scale(.9)}
+.prod-card .add svg{width:18px;height:18px}
+
+/* ============ 扫码弹窗 ============ */
+.scan-modal{
+  position:fixed;inset:0;background:#000;z-index:100;display:none;
+  flex-direction:column;
+}
+.scan-modal.show{display:flex}
+.scan-modal .cam-wrap{flex:1;position:relative;overflow:hidden}
+.scan-modal .cam{width:100%;height:100%;position:relative;overflow:hidden}
+.scan-modal .cam video,.scan-modal .cam canvas{width:100%!important;height:100%!important;object-fit:cover}
+.scan-loading{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  color:rgba(255,255,255,.9);font-size:14px;text-align:center;
+  display:none;flex-direction:column;align-items:center;gap:16px;
+}
+.scan-loading.show{display:flex}
+.scan-spinner{
+  width:40px;height:40px;border:3px solid rgba(255,255,255,.2);
+  border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.scan-frame{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:80%;height:35%;max-width:340px;
+  border-radius:14px;
+}
+.scan-frame::before,.scan-frame::after{
+  content:"";position:absolute;width:34px;height:34px;border:4px solid var(--accent);
+}
+.scan-frame::before{top:-2px;left:-2px;border-right:none;border-bottom:none;border-radius:14px 0 0 0}
+.scan-frame::after{bottom:-2px;right:-2px;border-left:none;border-top:none;border-radius:0 0 14px 0}
+.scan-frame .laser{
+  position:absolute;left:8%;right:8%;height:2px;background:var(--accent);
+  box-shadow:0 0 12px var(--accent);animation:laser 1.8s ease-in-out infinite;
+}
+@keyframes laser{0%,100%{top:12%}50%{top:88%}}
+.scan-modal .top-bar{position:absolute;top:0;left:0;right:0;padding:max(16px,env(safe-area-inset-top)) 18px 16px;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(180deg,rgba(0,0,0,.6),transparent)}
+.scan-modal .top-bar .tt{color:#fff;font-weight:600;font-size:16px}
+.scan-modal .top-bar .close{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.2);display:grid;place-items:center;color:#fff;backdrop-filter:blur(8px)}
+.scan-modal .top-bar .close svg{width:18px;height:18px}
+.scan-modal .hint{position:absolute;bottom:max(30px,env(safe-area-inset-bottom));left:0;right:0;text-align:center;color:rgba(255,255,255,.8);font-size:13px}
+.scan-modal .torch{position:absolute;bottom:max(80px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);padding:10px 22px;background:rgba(255,255,255,.15);backdrop-filter:blur(8px);border-radius:24px;color:#fff;font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px}
+.scan-modal .torch svg{width:16px;height:16px}
+
+/* ============ Toast ============ */
+.toast-wrap{position:fixed;top:max(70px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;pointer-events:none;width:max-content;max-width:90%}
+.toast{padding:11px 18px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:8px;animation:tin .3s ease}
+.toast.ok{background:var(--ok)}
+.toast.err{background:var(--danger)}
+.toast.info{background:var(--ink)}
+.toast svg{width:17px;height:17px}
+@keyframes tin{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:none}}
+
+/* ============ Modal ============ */
+.modal-bg{position:fixed;inset:0;background:rgba(12,23,38,.5);z-index:150;display:none;align-items:flex-end;justify-content:center;backdrop-filter:blur(3px)}
+.modal-bg.show{display:flex;animation:fade .2s}
+.sheet{background:var(--surface);width:100%;max-width:560px;border-radius:22px 22px 0 0;padding:20px;padding-bottom:max(20px,calc(var(--safe-bottom) + 20px));animation:sup .3s cubic-bezier(.2,.9,.3,1)}
+@keyframes sup{from{transform:translateY(100%)}to{transform:none}}
+.sheet h3{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:18px;font-weight:700;margin-bottom:6px}
+.sheet .sub{font-size:13px;color:var(--muted);margin-bottom:18px}
+.sheet .row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+.sheet .row:last-of-type{border-bottom:none}
+.sheet .row .v{font-family:"SF Mono","Consolas","Monaco",monospace;font-weight:700;color:var(--ink)}
+.sheet .actions{display:flex;gap:10px;margin-top:18px}
+.sheet .actions button{flex:1;padding:14px;border-radius:12px;font-weight:700;font-size:15px}
+.sheet .cancel{background:var(--bg);color:var(--ink-2)}
+.sheet .confirm{background:linear-gradient(135deg,var(--accent) 0%,var(--accent-d) 100%);color:#fff}
+.sheet .confirm:active{transform:scale(.97)}
+
+.hidden{display:none!important}
+
+/* ============ 订单操作按钮 ============ */
+.order-actions{display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
+.order-actions button{
+  flex:1;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:transform .1s;
+}
+.order-actions button:active{transform:scale(.96)}
+.order-actions .edit-btn{background:var(--primary-soft);color:var(--primary)}
+.order-actions .del-btn{background:var(--danger-soft);color:var(--danger)}
+.order-actions button svg{width:16px;height:16px}
+
+/* ============ 编辑订单弹窗 ============ */
+#editOrderModal .sheet{max-width:640px;max-height:85vh;display:flex;flex-direction:column}
+.edit-order-body{flex:1;overflow-y:auto;padding-right:4px}
+.edit-order-body .item-row{
+  display:flex;align-items:center;gap:10px;padding:10px 0;
+  border-bottom:1px solid var(--line);
+}
+.edit-order-body .item-row:last-child{border-bottom:none}
+.edit-order-body .item-info{flex:1;min-width:0}
+.edit-order-body .item-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.edit-order-body .item-code{font-size:11px;color:var(--muted);font-family:"SF Mono","Consolas","Monaco",monospace}
+.edit-order-body .item-controls{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.edit-order-body .price-input{
+  width:80px;padding:6px 8px;border:1.5px solid var(--line);border-radius:8px;
+  font-family:"SF Mono","Consolas","Monaco",monospace;font-size:14px;font-weight:700;color:var(--primary);
+  text-align:right;outline:none;background:#fff;
+}
+.edit-order-body .price-input:focus{border-color:var(--primary)}
+.edit-order-body .qty-ctrl{display:flex;align-items:center;background:var(--bg);border-radius:8px;overflow:hidden}
+.edit-order-body .qty-ctrl button{
+  width:32px;height:32px;font-size:16px;font-weight:700;color:var(--ink-2);display:grid;place-items:center
+}
+.edit-order-body .qty-ctrl button:active{background:var(--line)}
+.edit-order-body .qty-ctrl span{min-width:24px;text-align:center;font-family:"SF Mono","Consolas","Monaco",monospace;font-weight:700;font-size:13px}
+.edit-order-body .item-subtotal{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-weight:700;font-size:14px;color:var(--ink);min-width:70px;text-align:right}
+.edit-order-body .item-remove{
+  width:32px;height:32px;border-radius:8px;display:grid;place-items:center;
+  color:var(--danger);background:var(--danger-soft);flex-shrink:0
+}
+.edit-order-body .item-remove:active{transform:scale(.9)}
+.edit-order-body .item-remove svg{width:16px;height:16px}
+.edit-order-total{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px 0;margin-top:8px;border-top:2px solid var(--line);
+}
+.edit-order-total .label{font-size:13px;color:var(--ink-2);font-weight:500}
+.edit-order-total .value{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:22px;font-weight:800;color:var(--primary)}
+.edit-order-total .value .cur{font-size:14px;font-weight:600;opacity:.7;margin-right:2px}
+.edit-order-remark{margin-top:12px}
+.edit-order-remark label{font-size:13px;color:var(--ink-2);font-weight:500;display:block;margin-bottom:6px}
+.edit-order-remark textarea{
+  width:100%;min-height:50px;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;
+  font-size:14px;background:var(--surface);outline:none;resize:vertical;font-family:inherit;
+}
+.edit-order-remark textarea:focus{border-color:var(--primary)}
+.edit-order-empty{text-align:center;padding:30px 20px;color:var(--muted);font-size:14px}
+
+/* ============ 收集端/PDA 适配优化 ============ */
+@media (max-width: 480px) {
+  body { font-size: 16px; }
+  .app { max-width: 100%; }
+  
+  /* 增大扫码按钮，便于快速操作 */
+  .scan-btn { 
+    padding: 22px; 
+    font-size: 19px; 
+    min-height: 64px;
+    letter-spacing: 2px;
+  }
+  .scan-btn svg { width: 26px; height: 26px; }
+  
+  /* 增大结算按钮 */
+  .checkout-bar .pay-btn { 
+    padding: 16px 32px; 
+    font-size: 18px; 
+    min-height: 56px;
+  }
+  
+  /* 增大底部导航点击区域 */
+  .bottom-nav button { 
+    padding: 12px 0 14px; 
+    min-height: 56px;
+    font-size: 12px;
+  }
+  .bottom-nav button svg { width: 24px; height: 24px; }
+  
+  /* 增大手动输入区 */
+  .manual-row input { 
+    padding: 16px; 
+    font-size: 17px;
+    min-height: 52px;
+  }
+  .manual-row button { 
+    padding: 0 24px; 
+    font-size: 16px;
+    min-width: 72px;
+    min-height: 52px;
+  }
+  
+  /* 增大购物车项触摸区域 */
+  .cart-item { 
+    padding: 16px; 
+    min-height: 80px;
+  }
+  .cart-item .name { font-size: 16px; }
+  .cart-item .price-edit { 
+    width: 100px; 
+    font-size: 17px;
+    padding: 8px 10px;
+  }
+  .cart-item .qty button { 
+    width: 36px; height: 36px; 
+    font-size: 18px;
+  }
+  .cart-item .del { 
+    width: 36px; height: 36px; 
+  }
+  .cart-item .del svg { width: 18px; height: 18px; }
+  
+  /* 增大商品列表卡片触摸区域 */
+  .prod-card { 
+    padding: 16px; 
+    min-height: 64px;
+  }
+  .prod-card .pn { font-size: 15px; }
+  .prod-card .add { 
+    width: 44px; height: 44px; 
+  }
+  .prod-card .add svg { width: 22px; height: 22px; }
+  
+  /* 增大顶部金额显示 */
+  .total-banner { padding: 20px; }
+  .total-banner .amount { font-size: 40px; }
+  .total-banner .count b { font-size: 26px; }
+  
+  /* 优化结算条 */
+  .checkout-bar { 
+    padding: 14px 16px;
+    min-height: 80px;
+  }
+  .checkout-bar .total .v { font-size: 26px; }
+  
+  /* 增大备注输入区 */
+  .remark-box textarea { 
+    min-height: 80px; 
+    padding: 14px 16px;
+    font-size: 16px;
+  }
+  
+  /* 增大导出按钮 */
+  .toolbar .export { 
+    padding: 14px 12px; 
+    font-size: 14px;
+    min-height: 52px;
+  }
+  
+  /* 增大Modal按钮 */
+  .sheet .actions button { 
+    padding: 16px; 
+    font-size: 16px;
+    min-height: 56px;
+  }
+}
+
+/* 针对 PDA 等手持终端的更激进优化 */
+@media (hover: none) and (pointer: coarse) {
+  /* 移除点击高亮，提升体验 */
+  * { -webkit-tap-highlight-color: transparent; }
+  
+  /* 确保所有按钮有足够的触摸区域 (至少 44x44px) */
+  button, .btn, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* 增大行高便于手指操作 */
+  .cart-item, .prod-card, .order-head {
+    min-height: 60px;
+  }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 7v10M9 7v10M13 7v10M17 7v10"/></svg></div>
+      <div>
+        <h1>便携收银台</h1>
+        <div class="tag">SCAN · SELL · EXPORT</div>
+      </div>
+    </div>
+    <div class="clock" id="clock">--:--</div>
+  </header>
+
+  <!-- 主区 -->
+  <main class="main">
+    <!-- ===== 收银台 ===== -->
+    <section class="view active" id="view-cashier">
+      <div class="total-banner">
+        <div>
+          <div class="label">当前订单</div>
+          <div class="amount"><span class="cur">¥</span><span id="totalAmt">0.00</span></div>
+        </div>
+        <div class="count"><b id="totalQty">0</b><br>件商品</div>
+      </div>
+
+      <button class="scan-btn" onclick="startScan()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M11 8v8M15 8v8M19 8v8"/></svg>
+        扫码添加商品
+      </button>
+
+      <div class="manual-row">
+        <input type="text" id="manualInput" placeholder="或手动输入商品编码" inputmode="numeric" onkeydown="if(event.key==='Enter'){manualAdd()}">
+        <button onclick="manualAdd()">添加</button>
+      </div>
+
+      <div class="section-title">
+        <h2>购物车</h2>
+        <button class="clear" onclick="clearCart()">清空</button>
+      </div>
+
+      <div class="cart" id="cartList"></div>
+
+      <div class="remark-box">
+        <textarea id="remarkInput" placeholder="订单备注（可选）：如配送地址、客户要求、发票信息等" oninput="remark=this.value"></textarea>
+      </div>
+    </section>
+
+    <!-- ===== 订单 ===== -->
+    <section class="view" id="view-orders">
+      <div class="stats">
+        <div class="st"><div class="l">订单总数</div><div class="v" id="ordCount">0</div></div>
+        <div class="st"><div class="l">营业总额</div><div class="v acc" id="ordSum">¥0</div></div>
+      </div>
+      <div class="toolbar">
+        <button class="export xsl" onclick="exportExcel()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13l2 2 4-4"/></svg>
+          导出 Excel
+        </button>
+        <button class="export csv" onclick="exportCSV()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          导出 CSV
+        </button>
+        <button class="export clear" onclick="clearOrders()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+        </button>
+      </div>
+      <div class="orders" id="ordersList"></div>
+    </section>
+
+    <!-- ===== 商品 ===== -->
+    <section class="view" id="view-products">
+      <div class="search-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="prodSearch" placeholder="搜索商品名称或编码" oninput="renderProducts()">
+      </div>
+      <div class="prod-count">共 <b id="prodNum">0</b> 个商品</div>
+      <div class="products" id="prodList"></div>
+    </section>
+  </main>
+
+  <!-- 结算条 -->
+  <div class="checkout-bar" id="checkoutBar">
+    <div class="total">
+      <div class="l">合计金额</div>
+      <div class="v">¥<span id="checkoutTotal">0.00</span></div>
+    </div>
+    <button class="pay-btn" id="payBtn" onclick="checkout()" disabled>结算</button>
+  </div>
+
+  <!-- 底部导航 -->
+  <nav class="bottom-nav">
+    <button class="active" data-view="cashier" onclick="switchView('cashier')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M11 8v8M15 8v8"/></svg>
+      收银台
+    </button>
+    <button data-view="orders" onclick="switchView('orders')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      订单
+    </button>
+    <button data-view="products" onclick="switchView('products')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9M14 17H5M20 7l-3-5M3 17l3 5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+      商品
+    </button>
+  </nav>
+</div>
+
+<!-- 扫码弹窗 -->
+<div class="scan-modal" id="scanModal">
+  <div class="cam-wrap">
+    <div class="cam" id="camWrap"></div>
+    <div class="scan-frame"><div class="laser"></div></div>
+  </div>
+  <div class="scan-loading" id="scanLoading">
+    <div class="scan-spinner"></div>
+    <div>正在启动摄像头...</div>
+  </div>
+  <div class="top-bar">
+    <div class="tt">扫描条形码</div>
+    <button class="close" onclick="stopScan()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <button class="torch" id="torchBtn" onclick="toggleTorch()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6l1 5-4 4-4-4z"/><path d="M12 11v9"/></svg>
+    <span id="torchLabel">手电筒</span>
+  </button>
+  <div class="hint">将条形码对准框内即可自动识别</div>
+</div>
+
+<!-- 结算确认弹窗 -->
+<div class="modal-bg" id="checkoutModal">
+  <div class="sheet">
+    <h3>确认结算</h3>
+    <div class="sub">请核对订单信息后确认</div>
+    <div class="row"><span>商品数量</span><span class="v" id="ckQty">0</span></div>
+    <div class="row"><span>商品种类</span><span class="v" id="ckKinds">0</span></div>
+    <div class="row"><span>订单备注</span><span class="v" id="ckRemark" style="max-width:60%;text-align:right;font-family:inherit;font-weight:500;word-break:break-all">无</span></div>
+    <div class="row"><span style="font-weight:700">应收金额</span><span class="v" style="color:var(--primary);font-size:18px">¥<span id="ckTotal">0.00</span></span></div>
+    <div class="actions">
+      <button class="cancel" onclick="closeModal('checkoutModal')">取消</button>
+      <button class="confirm" onclick="confirmOrder()">确认收款</button>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑订单弹窗 -->
+<div class="modal-bg" id="editOrderModal">
+  <div class="sheet">
+    <h3>编辑订单</h3>
+    <div class="sub" id="editOrderSub">修改商品、数量、价格或备注</div>
+    <div class="edit-order-body" id="editOrderBody"></div>
+    <div class="edit-order-total">
+      <span class="label">合计金额</span>
+      <span class="value"><span class="cur">¥</span><span id="editOrderTotal">0.00</span></span>
+    </div>
+    <div class="edit-order-remark">
+      <label>订单备注</label>
+      <textarea id="editOrderRemark" placeholder="添加备注信息..."></textarea>
+    </div>
+    <div class="actions">
+      <button class="cancel" onclick="cancelEditOrder()">取消</button>
+      <button class="confirm" onclick="saveOrderEdit()">保存修改</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast 容器 -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- ====== 外部库（使用 jsdelivr CDN，国内可访问；defer 异步加载）====== -->
+<script defer src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- 备用 CDN：如果 jsdelivr 不可用，尝试 cdnjs -->
+<script>
+// CDN 备用加载机制
+window.addEventListener('error', function(e) {
+  if (e.target && e.target.tagName === 'SCRIPT') {
+    var src = e.target.src || '';
+    if (src.includes('html5-qrcode')) {
+      var s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js';
+      document.head.appendChild(s);
+    } else if (src.includes('xlsx')) {
+      var s2 = document.createElement('script');
+      s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      document.head.appendChild(s2);
+    }
+  }
+}, true);
+</script>
+
+<script>
+/* =========================================================
+   商品数据已移至外部文件 products.js (1381个商品)
+   ========================================================= */
+
+/* =========================================================
+   核心逻辑
+   ========================================================= */
+// 安全检查：如果 products.js 加载失败，使用空数组防止整个程序崩溃
+if (typeof PRODUCTS === 'undefined') {
+  console.error('商品数据文件 products.js 加载失败，请检查文件是否存在');
+  window.PRODUCTS = [];
+}
+
+const productMap = new Map(PRODUCTS.map(p => [String(p.code), p]));
+
+let cart = safeLoad('pos_cart', []);
+let orders = safeLoad('pos_orders', []);
+let remark = '';
+let html5Qr = null;
+let torchOn = false;
+let lastScanCode = '';
+let lastScanTime = 0;
+
+// 安全读取 localStorage，防止 JSON 解析失败导致崩溃
+function safeLoad(k, def){
+  try{
+    const v = localStorage.getItem(k);
+    if(!v) return def;
+    const parsed = JSON.parse(v);
+    return Array.isArray(def) ? (Array.isArray(parsed) ? parsed : def) : parsed;
+  }catch(e){
+    console.warn('数据读取失败，使用默认值:', k, e);
+    try{ localStorage.removeItem(k); }catch(e2){}
+    return def;
+  }
+}
+
+// 安全写入 localStorage，带防抖和容量保护
+// 每个key独立防抖，防止 cart 和 orders 的保存互相覆盖
+const saveTimers = {};
+function safeSave(k, v){
+  if(saveTimers[k]) clearTimeout(saveTimers[k]);
+  saveTimers[k] = setTimeout(()=>{
+    try{
+      const data = JSON.stringify(v);
+      // 检查数据大小，超过 4MB 时清理旧订单
+      if(data.length > 4 * 1024 * 1024 && k === 'pos_orders'){
+        // 只保留最近 500 条订单
+        const trimmed = v.slice(-500);
+        localStorage.setItem(k, JSON.stringify(trimmed));
+        console.warn('订单数据过大，已自动保留最近500条');
+      } else {
+        localStorage.setItem(k, data);
+      }
+    }catch(e){
+      console.error('数据保存失败:', e);
+      // 如果存储已满，尝试清理后重试
+      if(e.name === 'QuotaExceededError'){
+        try{
+          localStorage.removeItem('pos_cart');
+          localStorage.setItem(k, JSON.stringify(v));
+        }catch(e2){
+          console.error('存储空间不足，无法保存');
+        }
+      }
+    }
+    saveTimers[k] = null;
+  }, 300);
+}
+
+function saveCart(){ safeSave('pos_cart', cart); }
+function saveOrders(){ safeSave('pos_orders', orders); }
+
+const $ = id => document.getElementById(id);
+const money = n => Number(n||0).toFixed(2);
+
+/* ---------- 视图切换 ---------- */
+function switchView(v){
+  document.querySelectorAll('.view').forEach(s=>s.classList.remove('active'));
+  $('view-'+v).classList.add('active');
+  document.querySelectorAll('.bottom-nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
+  // 结算条只在收银台显示
+  $('checkoutBar').style.display = v==='cashier' ? 'flex' : 'none';
+  if(v==='orders') renderOrders();
+  if(v==='products') renderProducts();
+}
+
+/* ---------- 购物车 ---------- */
+function addToCart(code, silent=false){
+  code = String(code).trim();
+  if(!code) return false;
+  // 查找商品：先精确匹配，再尝试去除前导零匹配
+  let p = productMap.get(code);
+  if(!p){
+    // 尝试去除前导零后匹配（有些扫码器会补零）
+    p = productMap.get(code.replace(/^0+/, ''));
+  }
+  if(!p){
+    // 尝试在所有商品中查找包含该编码的
+    p = PRODUCTS.find(x => String(x.code) === code || String(x.code).replace(/^0+/,'') === code.replace(/^0+/,''));
+  }
+  if(!p){
+    if(!silent) toast('未找到商品：'+code, 'err');
+    return false;
+  }
+  const ex = cart.find(i=>i.code===p.code);
+  if(ex){ ex.qty++; }
+  else { cart.push({ code:p.code, name:p.name, price:p.price, qty:1 }); }
+  saveCart();
+  renderCart();
+  if(!silent) toast('已添加：'+p.name, 'ok');
+  return true;
+}
+
+function manualAdd(){
+  const inp = $('manualInput');
+  if(addToCart(inp.value)){ inp.value=''; }
+}
+
+function changeQty(idx, d){
+  cart[idx].qty += d;
+  if(cart[idx].qty <= 0){ cart.splice(idx,1); }
+  saveCart();
+  renderCart();
+}
+
+function setQty(idx, v){
+  v = Math.max(1, parseInt(v)||1);
+  cart[idx].qty = v;
+  saveCart();
+  renderCart();
+}
+
+function setPrice(idx, v){
+  const p = parseFloat(v);
+  if(!isNaN(p) && p>=0){
+    cart[idx].price = p;
+    saveCart();
+    renderCart();
+  }
+}
+
+function delItem(idx){
+  cart.splice(idx,1);
+  saveCart();
+  renderCart();
+}
+
+function clearCart(){
+  if(cart.length===0) return;
+  if(confirm('确定清空购物车？')){
+    cart = [];
+    remark = '';
+    $('remarkInput').value = '';
+    saveCart();
+    renderCart();
+    toast('已清空购物车','info');
+  }
+}
+
+function renderCart(){
+  const list = $('cartList');
+  if(cart.length===0){
+    list.innerHTML = `<div class="empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+      <h3>购物车空空如也</h3><p>点击上方扫码或输入编码添加商品</p>
+    </div>`;
+  } else {
+    list.innerHTML = cart.map((it,i)=>`
+      <div class="cart-item">
+        <div class="info">
+          <div class="name">${esc(it.name)}</div>
+          <div class="code">${esc(it.code)}</div>
+          <div class="price-row">
+            <span class="mono" style="font-size:11px;color:var(--muted)">¥</span>
+            <input class="price-edit" type="number" step="0.01" min="0" value="${it.price.toFixed(2)}" onchange="setPrice(${i},this.value)">
+            <div class="qty">
+              <button onclick="changeQty(${i},-1)">−</button>
+              <span>${it.qty}</span>
+              <button onclick="changeQty(${i},1)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="right">
+          <div class="subtotal">¥${money(it.price*it.qty)}</div>
+          <button class="del" onclick="delItem(${i})">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+          </button>
+        </div>
+      </div>
+    `).join('');
+  }
+  // 合计
+  const total = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const qty = cart.reduce((s,i)=>s+i.qty,0);
+  $('totalAmt').textContent = money(total);
+  $('totalQty').textContent = qty;
+  $('checkoutTotal').textContent = money(total);
+  $('payBtn').disabled = cart.length===0;
+}
+
+/* ---------- 结算 ---------- */
+function checkout(){
+  if(cart.length===0){ toast('购物车为空','err'); return; }
+  const total = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const qty = cart.reduce((s,i)=>s+i.qty,0);
+  $('ckQty').textContent = qty;
+  $('ckKinds').textContent = cart.length;
+  $('ckTotal').textContent = money(total);
+  $('ckRemark').textContent = remark || '无';
+  $('checkoutModal').classList.add('show');
+}
+
+function confirmOrder(){
+  const total = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const order = {
+    id: 'ORD' + new Date().toISOString().replace(/[-:T.Z]/g,'').slice(0,14),
+    time: new Date().toISOString(),
+    items: cart.map(i=>({...i})),
+    total: total,
+    qty: cart.reduce((s,i)=>s+i.qty,0),
+    remark: remark || ''
+  };
+  orders.unshift(order);
+  saveOrders();
+  cart = [];
+  remark = '';
+  $('remarkInput').value = '';
+  saveCart();
+  renderCart();
+  closeModal('checkoutModal');
+  toast('订单 '+order.id+' 已完成','ok');
+  if(navigator.vibrate) navigator.vibrate(30);
+}
+
+/* ---------- 订单列表 ---------- */
+function renderOrders(){
+  $('ordCount').textContent = orders.length;
+  const sum = orders.reduce((s,o)=>s+o.total,0);
+  $('ordSum').textContent = '¥'+money(sum);
+  const list = $('ordersList');
+  if(orders.length===0){
+    list.innerHTML = `<div class="empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      <h3>暂无订单</h3><p>完成的订单将显示在此处</p>
+    </div>`;
+    return;
+  }
+  list.innerHTML = orders.map((o,idx)=>{
+    const d = new Date(o.time);
+    const t = `${d.getMonth()+1}月${d.getDate()}日 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const items = o.items.map(it=>`<div class="item"><span class="nm">${esc(it.name)}</span><span class="qt">×${it.qty}</span><span class="pr">¥${money(it.price*it.qty)}</span></div>`).join('');
+    const rm = o.remark ? `<div class="rm"><b>备注：</b>${esc(o.remark)}</div>` : '';
+    return `<div class="order-card" id="ord-${idx}">
+      <div class="order-head" onclick="toggleOrderCard(${idx})">
+        <div>
+          <div class="oid">${o.id}</div>
+          <div class="time">${t} · ${o.items.length}种${o.qty}件</div>
+        </div>
+        <div class="total">¥${money(o.total)}</div>
+        <div class="order-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></div>
+      </div>
+      <div class="order-body">
+        ${items}${rm}
+        <div class="order-actions">
+          <button class="edit-btn" onclick="event.stopPropagation();editOrder(${idx})">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            编辑
+          </button>
+          <button class="del-btn" onclick="event.stopPropagation();deleteOrder(${idx})">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+            删除
+          </button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleOrderCard(idx){
+  document.getElementById('ord-'+idx).classList.toggle('open');
+}
+
+function clearOrders(){
+  if(orders.length===0){ toast('暂无订单','info'); return; }
+  if(confirm('确定清空所有订单？此操作不可恢复！')){
+    orders = [];
+    saveOrders();
+    renderOrders();
+    toast('已清空所有订单','info');
+  }
+}
+
+/* ---------- 编辑单笔订单 ---------- */
+let editingOrderIdx = -1;
+let editingOrderData = null;
+
+function editOrder(idx){
+  editingOrderIdx = idx;
+  const o = orders[idx];
+  if(!o) return;
+  // 深拷贝订单数据用于编辑
+  editingOrderData = {
+    items: o.items.map(it=>({...it})),
+    remark: o.remark || ''
+  };
+  $('editOrderSub').textContent = `订单 ${o.id} · 修改商品、数量、价格或备注`;
+  $('editOrderRemark').value = editingOrderData.remark;
+  renderEditOrderBody();
+  $('editOrderModal').classList.add('show');
+}
+
+function renderEditOrderBody(){
+  const body = $('editOrderBody');
+  const items = editingOrderData.items;
+  if(items.length===0){
+    body.innerHTML = '<div class="edit-order-empty">订单中暂无商品</div>';
+    updateEditOrderTotal();
+    return;
+  }
+  body.innerHTML = items.map((it,i)=>`
+    <div class="item-row">
+      <div class="item-info">
+        <div class="item-name">${esc(it.name)}</div>
+        <div class="item-code">${esc(it.code)}</div>
+      </div>
+      <div class="item-controls">
+        <span style="font-size:12px;color:var(--muted)">¥</span>
+        <input class="price-input" type="number" step="0.01" min="0" value="${it.price.toFixed(2)}" onchange="editOrderSetPrice(${i},this.value)">
+        <div class="qty-ctrl">
+          <button onclick="editOrderChangeQty(${i},-1)">−</button>
+          <span>${it.qty}</span>
+          <button onclick="editOrderChangeQty(${i},1)">+</button>
+        </div>
+        <span class="item-subtotal">¥${money(it.price*it.qty)}</span>
+      </div>
+      <button class="item-remove" onclick="editOrderRemoveItem(${i})" title="移除">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+      </button>
+    </div>
+  `).join('');
+  updateEditOrderTotal();
+}
+
+function updateEditOrderTotal(){
+  const total = editingOrderData.items.reduce((s,i)=>s+i.price*i.qty,0);
+  $('editOrderTotal').textContent = money(total);
+}
+
+function editOrderChangeQty(i, d){
+  editingOrderData.items[i].qty += d;
+  if(editingOrderData.items[i].qty <= 0){
+    editingOrderData.items.splice(i,1);
+  }
+  renderEditOrderBody();
+}
+
+function editOrderSetPrice(i, v){
+  const p = parseFloat(v);
+  if(!isNaN(p) && p>=0){
+    editingOrderData.items[i].price = p;
+    renderEditOrderBody();
+  }
+}
+
+function editOrderRemoveItem(i){
+  editingOrderData.items.splice(i,1);
+  renderEditOrderBody();
+}
+
+function cancelEditOrder(){
+  editingOrderIdx = -1;
+  editingOrderData = null;
+  closeModal('editOrderModal');
+}
+
+function saveOrderEdit(){
+  if(editingOrderIdx < 0 || !editingOrderData) return;
+  const items = editingOrderData.items;
+  if(items.length===0){
+    toast('订单至少需要一个商品','err');
+    return;
+  }
+  const total = items.reduce((s,i)=>s+i.price*i.qty,0);
+  const qty = items.reduce((s,i)=>s+i.qty,0);
+  orders[editingOrderIdx].items = items;
+  orders[editingOrderIdx].total = total;
+  orders[editingOrderIdx].qty = qty;
+  orders[editingOrderIdx].remark = $('editOrderRemark').value || '';
+  saveOrders();
+  renderOrders();
+  cancelEditOrder();
+  toast('订单已更新','ok');
+}
+
+/* ---------- 删除单笔订单 ---------- */
+function deleteOrder(idx){
+  if(idx < 0 || idx >= orders.length) return;
+  const o = orders[idx];
+  const total = money(o.total);
+  if(confirm(`确定删除订单 ${o.id}？\n金额：¥${total}\n此操作不可恢复！`)){
+    orders.splice(idx,1);
+    saveOrders();
+    renderOrders();
+    toast('订单已删除','info');
+  }
+}
+
+/* ---------- 导出 ---------- */
+function buildExportData(){
+  // 明细行
+  const details = [];
+  orders.forEach(o=>{
+    const d = new Date(o.time);
+    const t = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+    o.items.forEach(it=>{
+      details.push({
+        '订单编号': o.id,
+        '下单时间': t,
+        '商品编码': it.code,
+        '商品名称': it.name,
+        '单价': Number(it.price.toFixed(2)),
+        '数量': it.qty,
+        '小计': Number((it.price*it.qty).toFixed(2)),
+        '订单备注': o.remark || '',
+        '订单总额': Number(o.total.toFixed(2))
+      });
+    });
+  });
+  return details;
+}
+
+function exportExcel(){
+  if(orders.length===0){ toast('暂无订单可导出','err'); return; }
+  const details = buildExportData();
+  // 汇总
+  const summary = orders.map(o=>{
+    const d = new Date(o.time);
+    const t = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+    return {
+      '订单编号': o.id,
+      '下单时间': t,
+      '商品种类': o.items.length,
+      '商品件数': o.qty,
+      '订单总额': Number(o.total.toFixed(2)),
+      '备注': o.remark || ''
+    };
+  });
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.json_to_sheet(summary);
+  ws1['!cols'] = [{wch:18},{wch:20},{wch:8},{wch:8},{wch:12},{wch:30}];
+  XLSX.utils.book_append_sheet(wb, ws1, '订单汇总');
+  const ws2 = XLSX.utils.json_to_sheet(details);
+  ws2['!cols'] = [{wch:18},{wch:20},{wch:16},{wch:22},{wch:8},{wch:6},{wch:10},{wch:30},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws2, '订单明细');
+  const fn = `收银订单_${new Date().toISOString().slice(0,10)}.xlsx`;
+  XLSX.writeFile(wb, fn);
+  toast('已导出 '+fn,'ok');
+}
+
+function exportCSV(){
+  if(orders.length===0){ toast('暂无订单可导出','err'); return; }
+  const details = buildExportData();
+  const keys = Object.keys(details[0]);
+  // 加 BOM 防止 Excel 中文乱码
+  const csv = '\ufeff' + keys.join(',') + '\n' + details.map(r=>
+    keys.map(k=>{
+      const v = r[k]===null||r[k]===undefined ? '' : String(r[k]);
+      return v.includes(',')||v.includes('"')||v.includes('\n') ? '"'+v.replace(/"/g,'""')+'"' : v;
+    }).join(',')
+  ).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `收银订单_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('已导出 CSV','ok');
+}
+
+/* ---------- 商品列表 ---------- */
+function renderProducts(){
+  const kw = ($('prodSearch').value||'').trim().toLowerCase();
+  const list = kw ? PRODUCTS.filter(p=>p.name.toLowerCase().includes(kw)||String(p.code).includes(kw)) : PRODUCTS;
+  $('prodNum').textContent = list.length;
+  $('prodList').innerHTML = list.map(p=>`
+    <div class="prod-card">
+      <div class="pd">
+        <div class="pn">${esc(p.name)}</div>
+        <div class="pc">${esc(p.code)}</div>
+      </div>
+      <div class="pp">¥${money(p.price)}</div>
+      <button class="add" onclick="addToCart('${p.code}');switchView('cashier')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+  `).join('');
+}
+
+/* ---------- 扫码 ---------- */
+
+// 等待库加载
+function waitForLibrary(maxWait){
+  return new Promise((resolve)=>{
+    if(typeof Html5Qrcode !== 'undefined'){ resolve(true); return; }
+    const start = Date.now();
+    const timer = setInterval(()=>{
+      if(typeof Html5Qrcode !== 'undefined'){
+        clearInterval(timer);
+        resolve(true);
+      } else if(Date.now()-start > (maxWait||8000)){
+        clearInterval(timer);
+        resolve(false);
+      }
+    }, 200);
+  });
+}
+
+async function startScan(){
+  $('scanModal').classList.add('show');
+  $('scanLoading').classList.add('show');
+
+  // 优先使用原生 BarcodeDetector API（更灵敏、不依赖外部库）
+  if('BarcodeDetector' in window){
+    try{
+      await startNativeScan();
+      return;
+    }catch(e){
+      console.warn('BarcodeDetector 启动失败，回退到 html5-qrcode:', e);
+    }
+  }
+
+  // 回退到 html5-qrcode
+  const loaded = await waitForLibrary(8000);
+  if(!loaded){
+    $('scanLoading').classList.remove('show');
+    $('scanModal').classList.remove('show');
+    toast('扫码库加载失败，请检查网络后重试','err');
+    return;
+  }
+
+  if(html5Qr){
+    try{ await html5Qr.stop(); html5Qr.clear(); }catch(e){}
+    html5Qr = null;
+  }
+
+  try{
+    html5Qr = new Html5Qrcode('camWrap', { verbose: false });
+
+    const config = {
+      fps: 20,
+      qrbox: function(vw, vh){
+        var w = Math.floor(vw * 0.6);
+        var h = Math.floor(vh * 0.15);
+        if(w < 120) w = 180;
+        if(h < 50) h = 60;
+        return { width: w, height: h };
+      },
+      aspectRatio: 1.0,
+      videoConstraints: {
+        facingMode: 'environment',
+        width: { min: 640, ideal: 1920 },
+        height: { min: 480, ideal: 1080 }
+      }
+    };
+
+    await html5Qr.start(
+      { facingMode: 'environment' },
+      config,
+      onScanSuccess,
+      function(err){}
+    );
+
+    $('scanLoading').classList.remove('show');
+    toast('摄像头已启动，对准条形码即可','info');
+  }catch(e){
+    console.error('摄像头启动失败:', e);
+    $('scanLoading').classList.remove('show');
+    $('scanModal').classList.remove('show');
+    let msg = '无法启动摄像头';
+    if(e && e.message){
+      if(e.message.includes('Permission') || e.message.includes('NotAllowed')){
+        msg = '摄像头权限被拒绝，请在浏览器设置中允许';
+      } else if(e.message.includes('NotFound') || e.message.includes('NotReadable')){
+        msg = '未找到摄像头设备';
+      } else if(e.message.includes('Insecure')){
+        msg = '需要 HTTPS 环境才能使用摄像头';
+      }
+    }
+    toast(msg, 'err');
+    html5Qr = null;
+  }
+}
+
+// ====== 原生 BarcodeDetector 扫码（更灵敏）======
+let nativeScanStream = null;
+let nativeScanRunning = false;
+
+async function startNativeScan(){
+  const formats = await BarcodeDetector.getSupportedFormats();
+  const supported = ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','code_93','itf']
+    .filter(f => formats.includes(f));
+
+  const detector = new BarcodeDetector({ formats: supported.length ? supported : undefined });
+
+  nativeScanStream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 1920 },
+      height: { ideal: 1080 }
+    }
+  });
+
+  const video = document.createElement('video');
+  video.srcObject = nativeScanStream;
+  video.playsInline = true;
+  video.muted = true;
+  video.style.cssText = 'width:100%;height:100%;object-fit:cover';
+  $('camWrap').innerHTML = '';
+  $('camWrap').appendChild(video);
+  await video.play();
+
+  $('scanLoading').classList.remove('show');
+  toast('摄像头已启动，对准条形码即可','info');
+
+  nativeScanRunning = true;
+  scanLoop(detector, video);
+}
+
+async function scanLoop(detector, video){
+  if(!nativeScanRunning) return;
+  try{
+    const barcodes = await detector.detect(video);
+    if(barcodes && barcodes.length > 0){
+      for(const b of barcodes){
+        if(b.rawValue){
+          onScanSuccess(b.rawValue);
+          break;
+        }
+      }
+    }
+  }catch(e){}
+  // 降速扫描：每 500ms 检测一次，防止同一商品被重复识别
+  setTimeout(()=>scanLoop(detector, video), 500);
+}
+
+function stopNativeScan(){
+  nativeScanRunning = false;
+  if(nativeScanStream){
+    nativeScanStream.getTracks().forEach(t=>t.stop());
+    nativeScanStream = null;
+  }
+}
+
+function onScanSuccess(decoded){
+  // 全局冷却：上次扫码后 1.5 秒内不响应任何扫码，防止同一商品被重复添加
+  const now = Date.now();
+  if(now - lastScanTime < 1500) return;
+  // 相同编码额外冷却 2 秒
+  if(decoded === lastScanCode && now - lastScanTime < 2000) return;
+  lastScanCode = decoded;
+  lastScanTime = now;
+  if(navigator.vibrate) navigator.vibrate(50);
+
+  // 从扫描结果中提取以69开头的数字串
+  const code = extractBarcode(decoded);
+  if(!code){
+    // 扫到了内容但不是有效的69开头条码，重置冷却允许立即重扫
+    lastScanTime = 0;
+    return;
+  }
+
+  if(addToCart(code, true)){
+    const item = cart.find(i => String(i.code) === code || String(i.code).replace(/^0+/,'') === code.replace(/^0+/,''));
+    toast('已添加：' + (item ? item.name : code), 'ok');
+    playBeep();
+  } else {
+    toast('未找到商品：' + code, 'err');
+  }
+}
+
+// 扫码成功音效（叮咚）
+let audioCtx = null;
+function playBeep(){
+  try{
+    if(!audioCtx){
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    // 如果上下文被暂停（移动端自动播放策略），先恢复
+    if(audioCtx.state === 'suspended'){
+      audioCtx.resume();
+    }
+    // 生成"叮咚"两音效果
+    const t = audioCtx.currentTime;
+    // 第一个音：高音"叮"
+    const osc1 = audioCtx.createOscillator();
+    const gain1 = audioCtx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.value = 880;
+    gain1.gain.setValueAtTime(0, t);
+    gain1.gain.linearRampToValueAtTime(0.3, t + 0.02);
+    gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    osc1.connect(gain1).connect(audioCtx.destination);
+    osc1.start(t);
+    osc1.stop(t + 0.2);
+    // 第二个音：低音"咚"
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.value = 660;
+    gain2.gain.setValueAtTime(0, t + 0.1);
+    gain2.gain.linearRampToValueAtTime(0.25, t + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    osc2.connect(gain2).connect(audioCtx.destination);
+    osc2.start(t + 0.1);
+    osc2.stop(t + 0.4);
+  }catch(e){
+    // 音频不可用，静默忽略
+  }
+}
+
+// 从扫描结果中提取以69开头的纯数字条码
+// 处理扫码器可能带入的额外文字、URL前缀等干扰内容
+function extractBarcode(raw){
+  if(!raw) return null;
+  var s = String(raw).trim();
+
+  // 1. 如果是纯数字，直接使用
+  if(/^\d+$/.test(s)) return s;
+
+  // 2. 从字符串中提取所有连续数字段（长度>=8），优先找69开头的
+  var matches = s.match(/\d{8,}/g);
+  if(matches){
+    // 优先找69开头的
+    for(var i=0; i<matches.length; i++){
+      if(matches[i].indexOf('69') === 0) return matches[i];
+    }
+    // 没有69开头的，取最长的数字串
+    matches.sort(function(a,b){ return b.length - a.length; });
+    return matches[0];
+  }
+
+  // 3. 尝试提取较短的数字串（6-7位），可能在条码被部分识别时有用
+  var shortMatches = s.match(/\d{6,}/g);
+  if(shortMatches){
+    for(var i=0; i<shortMatches.length; i++){
+      if(shortMatches[i].indexOf('69') === 0) return shortMatches[i];
+    }
+  }
+
+  // 4. 如果包含69开头的子串，尝试提取
+  var idx = s.indexOf('69');
+  if(idx >= 0){
+    var sub = '';
+    for(var i=idx; i<s.length; i++){
+      if(s[i] >= '0' && s[i] <= '9') sub += s[i];
+      else if(sub.length >= 8) break;
+      else sub = '';
+    }
+    if(sub.length >= 8) return sub;
+  }
+
+  return null;
+}
+
+async function stopScan(){
+  // 停止原生扫码
+  stopNativeScan();
+  // 停止 html5-qrcode
+  if(html5Qr){
+    try{
+      await html5Qr.stop();
+      html5Qr.clear();
+    }catch(e){}
+    html5Qr = null;
+  }
+  torchOn = false;
+  $('torchLabel').textContent = '手电筒';
+  $('scanLoading').classList.remove('show');
+  $('scanModal').classList.remove('show');
+  // 清空摄像头容器
+  $('camWrap').innerHTML = '';
+}
+
+async function toggleTorch(){
+  // 获取当前活跃的视频流（原生或 html5-qrcode）
+  let stream = null;
+  if(nativeScanStream){
+    stream = nativeScanStream;
+  } else {
+    const video = document.querySelector('#camWrap video');
+    stream = video?.srcObject;
+  }
+  if(!stream) return;
+  try{
+    const track = stream.getVideoTracks()[0];
+    const cap = track.getCapabilities ? track.getCapabilities() : {};
+    if(cap.torch){
+      torchOn = !torchOn;
+      await track.applyConstraints({ advanced:[{ torch: torchOn }] });
+      $('torchLabel').textContent = torchOn ? '关闭手电' : '手电筒';
+    } else {
+      toast('设备不支持手电筒','info');
+    }
+  }catch(e){
+    toast('手电筒切换失败','err');
+  }
+}
+
+/* ---------- 工具 ---------- */
+function esc(s){ return String(s).replace(/[<>&"]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+function closeModal(id){ $(id).classList.remove('show'); }
+
+function toast(msg, type='info'){
+  const w = $('toastWrap');
+  const icons = {
+    ok:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>',
+    err:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>',
+    info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 8v4M12 16h.01"/><circle cx="12" cy="12" r="10"/></svg>'
+  };
+  const t = document.createElement('div');
+  t.className = 'toast '+type;
+  t.innerHTML = (icons[type]||'')+'<span>'+esc(msg)+'</span>';
+  w.appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateY(-8px)'; setTimeout(()=>t.remove(),300); }, 1800);
+}
+
+/* ---------- 时钟 ---------- */
+function tick(){
+  const d = new Date();
+  $('clock').textContent = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+setInterval(tick,1000); tick();
+
+/* ---------- 全局错误处理 ---------- */
+window.addEventListener('error', function(e){
+  console.error('运行时错误:', e.error || e.message);
+  // 防止未捕获的错误导致页面白屏
+  return true;
+});
+
+window.addEventListener('unhandledrejection', function(e){
+  console.error('未处理的Promise错误:', e.reason);
+  e.preventDefault();
+});
+
+// 页面恢复可见时重新同步数据，防止多标签页数据不一致
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'visible'){
+    // 重新读取数据（可能在其他标签页中被修改）
+    try{
+      const newOrders = safeLoad('pos_orders', []);
+      if(newOrders.length !== orders.length){
+        orders = newOrders;
+        renderOrders();
+      }
+    }catch(e){}
+  }
+});
+
+// 存储事件监听：其他标签页修改数据时自动同步
+window.addEventListener('storage', function(e){
+  if(e.key === 'pos_orders'){
+    try{
+      orders = safeLoad('pos_orders', []);
+      renderOrders();
+    }catch(e2){}
+  }
+});
+
+/* ---------- 初始化 ---------- */
+try{
+  renderCart();
+  renderOrders();
+  renderProducts();
+}catch(e){
+  console.error('初始化失败:', e);
+  // 出错时重置数据
+  cart = [];
+  orders = [];
+  renderCart();
+  renderOrders();
+}
+
+// 注册 Service Worker
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
