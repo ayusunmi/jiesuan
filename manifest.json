@@ -1,0 +1,26 @@
+{
+  "name": "便携收银台",
+  "short_name": "收银台",
+  "description": "手机版便携收银系统 - 扫码收款、订单管理、数据导出",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1220",
+  "theme_color": "#0f766e",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='42' fill='%230f766e'/%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='9' stroke-linecap='round'%3E%3Cpath d='M58 56v80M78 56v80M98 56v80M118 56v80M138 56v80'/%3E%3C/g%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%230f766e'/%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='24' stroke-linecap='round'%3E%3Cpath d='M154 150v212M208 150v212M262 150v212M316 150v212M370 150v212'/%3E%3C/g%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
