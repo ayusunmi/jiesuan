@@ -1,0 +1,16 @@
+# PowerShell 辅助脚本
+*.ps1
+
+# Python 临时脚本
+*.py
+
+# 临时数据文件
+*.xlsx
+data.xlsx
+
+# 原始图片（已转 base64 嵌入 index.html）
+qr_payment.jpg
+
+# 系统文件
+.DS_Store
+Thumbs.db
